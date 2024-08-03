@@ -1,16 +1,20 @@
 const jsonServer = require('json-server');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
-const fs = require('fs');
+const low = require('lowdb');
+const Memory = require('lowdb/adapters/Memory');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
+const adapter = new Memory();
+const db = low(adapter);
+db.defaults({ users: [] }).write();
+
 const server = jsonServer.create();
-const router = jsonServer.router('../db.json'); // Adjust the path to db.json
+const router = jsonServer.router(db);
 const middlewares = jsonServer.defaults();
 
 // Swagger setup
-//adasd
 const options = {
   definition: {
     openapi: '3.0.0',
@@ -41,8 +45,7 @@ function verifyToken(token) {
 
 // Check if the user exists in database
 function isAuthenticated({ email, password }) {
-  const userdb = JSON.parse(fs.readFileSync('../db.json', 'UTF-8'));
-  return userdb.users.findIndex((user) => user.email === email && user.password === password) !== -1;
+  return db.get('users').find({ email, password }).value() !== undefined;
 }
 
 // Middleware for parsing request bodies
@@ -111,16 +114,13 @@ server.post('/auth/register', (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
   }
-  const userdb = JSON.parse(fs.readFileSync('../db.json', 'UTF-8'));
-
-  if (userdb.users.some((user) => user.email === email)) {
+  if (db.get('users').find({ email }).value()) {
     return res.status(401).json({ message: 'Email already exists' });
   }
 
   // Add new user
-  const newUser = { id: userdb.users.length + 1, email, password };
-  userdb.users.push(newUser);
-  fs.writeFileSync('../db.json', JSON.stringify(userdb, null, 2));
+  const newUser = { id: db.get('users').size().value() + 1, email, password };
+  db.get('users').push(newUser).write();
 
   // Create token for new user
   const access_token = createToken({ email });
