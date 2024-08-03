@@ -1,6 +1,19 @@
 {
+  "version": 3,
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.js"
+    }
+  ],
   "functions": {
-    "api/server.js": {
+    "api/index.js": {
       "memory": 1024,
       "includeFiles": "db.json"
     }
@@ -8,7 +21,7 @@
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "api/server.js"
+      "destination": "api/index.js"
     }
   ]
 }
