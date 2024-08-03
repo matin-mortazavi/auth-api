@@ -1,7 +1,8 @@
 import jsonServer from 'json-server';
 import bodyParser from 'body-parser';
 import jwt from 'jsonwebtoken';
-import { Low, JSONFile } from 'lowdb';
+import low from 'lowdb';
+import FileSync from 'lowdb/adapters/FileSync';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { fileURLToPath } from 'url';
@@ -9,12 +10,11 @@ import { join, dirname } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Setup lowdb with JSONFile adapter
+// Setup lowdb with FileSync adapter
 const file = join(__dirname, '../db.json');
-const adapter = new JSONFile(file);
-const db = new Low(adapter);
-await db.read();
-db.data = db.data || { users: [] };
+const adapter = new FileSync(file);
+const db = low(adapter);
+db.defaults({ users: [] }).write();
 
 const server = jsonServer.create();
 const router = jsonServer.router(db);
@@ -51,7 +51,7 @@ function verifyToken(token) {
 
 // Check if the user exists in database
 function isAuthenticated({ email, password }) {
-  return db.data.users.find((user) => user.email === email && user.password === password) !== undefined;
+  return db.get('users').find({ email, password }).value() !== undefined;
 }
 
 // Middleware for parsing request bodies
@@ -120,20 +120,23 @@ server.post('/auth/register', (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
   }
-  if (db.data.users.some((user) => user.email === email)) {
+  if (db.get('users').find({ email }).value()) {
     return res.status(401).json({ message: 'Email already exists' });
   }
 
   // Add new user
-  const newUser = { id: db.data.users.length + 1, email, password };
-  db.data.users.push(newUser);
-  db.write();
+  const newUser = { id: db.get('users').size().value() + 1, email, password };
+  db.get('users').push(newUser).write();
 
   // Create token for new user
   const access_token = createToken({ email });
   res.status(200).json({ access_token });
 });
 
+server.use(jsonServer.rewriter({
+  '/api/*': '/$1',
+  '/blog/:resource/:id/show': '/:resource/:id'
+}));
 server.use(router);
 server.listen(3000, () => {
   console.log('JSON Server is running');
