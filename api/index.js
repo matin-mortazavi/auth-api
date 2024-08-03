@@ -1,14 +1,20 @@
-const jsonServer = require('json-server');
-const bodyParser = require('body-parser');
-const jwt = require('jsonwebtoken');
-const low = require('lowdb');
-const Memory = require('lowdb/adapters/Memory');
-const swaggerUi = require('swagger-ui-express');
-const swaggerJsdoc = require('swagger-jsdoc');
+import jsonServer from 'json-server';
+import bodyParser from 'body-parser';
+import jwt from 'jsonwebtoken';
+import { Low, JSONFile } from 'lowdb';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
+import { fileURLToPath } from 'url';
+import { join, dirname } from 'path';
 
-const adapter = new Memory();
-const db = low(adapter);
-db.defaults({ users: [] }).write();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Setup lowdb with JSONFile adapter
+const file = join(__dirname, '../db.json');
+const adapter = new JSONFile(file);
+const db = new Low(adapter);
+await db.read();
+db.data = db.data || { users: [] };
 
 const server = jsonServer.create();
 const router = jsonServer.router(db);
@@ -23,7 +29,7 @@ const options = {
       version: '1.0.0',
     },
   },
-  apis: ['./api/index.js'], // Path to the API docs
+  apis: [join(__dirname, 'index.js')], // Path to the API docs
 };
 
 const specs = swaggerJsdoc(options);
@@ -45,7 +51,7 @@ function verifyToken(token) {
 
 // Check if the user exists in database
 function isAuthenticated({ email, password }) {
-  return db.get('users').find({ email, password }).value() !== undefined;
+  return db.data.users.find((user) => user.email === email && user.password === password) !== undefined;
 }
 
 // Middleware for parsing request bodies
@@ -114,27 +120,24 @@ server.post('/auth/register', (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
   }
-  if (db.get('users').find({ email }).value()) {
+  if (db.data.users.some((user) => user.email === email)) {
     return res.status(401).json({ message: 'Email already exists' });
   }
 
   // Add new user
-  const newUser = { id: db.get('users').size().value() + 1, email, password };
-  db.get('users').push(newUser).write();
+  const newUser = { id: db.data.users.length + 1, email, password };
+  db.data.users.push(newUser);
+  db.write();
 
   // Create token for new user
   const access_token = createToken({ email });
   res.status(200).json({ access_token });
 });
 
-server.use(jsonServer.rewriter({
-  '/api/*': '/$1',
-  '/blog/:resource/:id/show': '/:resource/:id'
-}));
 server.use(router);
 server.listen(3000, () => {
   console.log('JSON Server is running');
 });
 
 // Export the Server API
-module.exports = server;
+export default server;
